@@ -1,0 +1,594 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.6">Jekyll</generator><link href="buredoranna.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="buredoranna.github.io/" rel="alternate" type="text/html" /><updated>2020-01-10T10:04:59-08:00</updated><id>buredoranna.github.io/feed.xml</id><subtitle>This is my website. There are many like it, but this one is mine.</subtitle><entry><title type="html">Visualizing ext4</title><link href="buredoranna.github.io/linux/ext4/2020/01/09/ext4-viz.html" rel="alternate" type="text/html" title="Visualizing ext4" /><published>2020-01-09T23:00:00-08:00</published><updated>2020-01-09T23:00:00-08:00</updated><id>buredoranna.github.io/linux/ext4/2020/01/09/ext4-viz</id><content type="html" xml:base="buredoranna.github.io/linux/ext4/2020/01/09/ext4-viz.html">&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+&lt;center&gt;&lt;h1&gt;What does ext4 look like?&lt;/h1&gt;&lt;/center&gt;
+&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;That is... if I start with a blank drive, a drive made completely of 0x00s, and then do mkfs.ext4, what does the drive, now embossed with ext4, look like?&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;I mean, what I wanted to see, is what it takes to transmogrify a bunch 0x00s, from &quot;nothing&quot; into the purposeful assemblage of bytes that is an ext4 filesystem.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;At first I figured I’d try visualizing a live drive, like /dev/sda... but quickly figured 'dd' + 'live drive' could get me into trouble, so opted for adding a small secondary drive to my VM.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Then I thought, even with a virtual machine, working with 'dd' and /dev/sdX would be more trouble than it was worth. I then remembered I didn’t have to use drives at all, virtual or otherwise, I could just work with a regular file, configured as a loop device.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;And it turns out mount/umount have evolved since I last experimented with loop devices... you don’t have to 'losetup' the loop device anymore just a simple:&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;
+# mount -o loop &amp;lt;foo_file&amp;gt; &amp;lt;bar_dir&amp;gt;
+# umount &amp;lt;bar_dir&amp;gt;
+&lt;/pre&gt;
+
+&lt;p&gt;Is all that is required&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Using a loop device simplified my efforts, and diminished the likelihood of a&lt;br /&gt;&lt;a href=&quot;https://askubuntu.com/questions/982552/accidentally-did-dd-dev-sda&quot;&gt;dd accident&lt;/a&gt;.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;So a little about what we’re looking at.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;I always start with a blank file... that is a file created with 'dd' and a source of '/dev/zero'... the calculated size of the file correspond to a final image with eight blocks, each 64-pixels/bytes high, and 1024-pixels/bytes wide.&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;
+$ dd if=/dev/zero of=blockfile.ext4 bs=$((64 * 1024)) count=8
+&lt;/pre&gt;
+
+&lt;p&gt;The output of this is predictable&lt;br /&gt;&lt;/p&gt;
+&lt;pre&gt;
+$ od -x -A x blockfile.ext4
+000000 0000 0000 0000 0000 0000 0000 0000 0000
+*
+080000
+&lt;/pre&gt;
+
+&lt;p&gt;But I wanted to see the difference between a zero file, and one with whatever structure mkfs.ext4 adds to the drive...&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Of note: the size of drive I’m working with is too small for a journal... but thats okay... Doing a visualization which includes a journal I’m leaving for a future project.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;So now the output of 'od' of the blockfile which mkfs.ext4 is run against, is a little more interesting... here we begin to see structure:&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;
+$ od -x -Ax blockfile.ext4
+000000 0000 0000 0000 0000 0000 0000 0000 0000
+*
+000400 0040 0000 0200 0000 0019 0000 01e2 0000
+000410 0035 0000 0001 0000 0000 0000 0000 0000
+000420 2000 0000 2000 0000 0040 0000 0000 0000
+000430 c737 5e10 0000 ffff ef53 0001 0001 0000
+000440 c737 5e10 0000 0000 0000 0000 0001 0000
+000450 0000 0000 000b 0000 0080 0000 0038 0000
+000460 02c2 0000 046b 0000 927f 9037 d060 5e4c
+000470 1b83 287a 7389 0001 0000 0000 0000 0000
+000480 0000 0000 0000 0000 0000 0000 0000 0000
+*
+0004c0 0000 0000 0000 0000 0000 0000 0000 0003
+0004d0 0000 0000 0000 0000 0000 0000 0000 0000
+0004e0 0000 0000 0000 0000 0000 0000 7da5 5d6c
+0004f0 72c1 5b42 719d b2ee 63d5 d142 0001 0040
+000500 000c 0000 0000 0000 c737 5e10 0000 0000
+000510 0000 0000 0000 0000 0000 0000 0000 0000
+*
+000560 0001 0000 0000 0000 0000 0000 0000 0000
+000570 0000 0000 0104 0000 0015 0000 0000 0000
+000580 0000 0000 0000 0000 0000 0000 0000 0000
+*
+0007f0 0000 0000 0000 0000 0000 0000 7d3f 9ace
+000800 0006 0000 0016 0000 0026 0000 01e2 0035
+000810 0002 0004 0000 0000 c571 4e0a 0035 4797
+000820 0000 0000 0000 0000 0000 0000 0000 0000
+000830 0000 0000 0000 0000 96a2 c509 0000 0000
+000840 0000 0000 0000 0000 0000 0000 0000 0000
+*
+001800 ffff 002f 1fe0 0000 0000 0000 0000 0000
+001810 0000 0000 0000 0000 0000 0000 0000 0000
+*
+001830 0000 0000 0000 0000 0000 0000 0000 8000
+001840 ffff ffff ffff ffff ffff ffff ffff ffff
+*
+001c00 0002 0000 000c 0201 002e 0000 0002 0000
+001c10 000c 0202 2e2e 0000 000b 0000 03dc 020a
+001c20 6f6c 7473 662b 756f 646e 0000 0000 0000
+001c30 0000 0000 0000 0000 0000 0000 0000 0000
+*
+001ff0 0000 0000 0000 0000 000c de00 e669 11f0
+002000 000b 0000 000c 0201 002e 0000 0002 0000
+002010 03e8 0202 2e2e 0000 0000 0000 0000 0000
+002020 0000 0000 0000 0000 0000 0000 0000 0000
+*
+0023f0 0000 0000 0000 0000 000c de00 0f7a 7b5d
+002400 0000 0000 03f4 0000 0000 0000 0000 0000
+002410 0000 0000 0000 0000 0000 0000 0000 0000
+*
+0027f0 0000 0000 0000 0000 000c de00 3e04 8f88
+002800 0000 0000 03f4 0000 0000 0000 0000 0000
+002810 0000 0000 0000 0000 0000 0000 0000 0000
+*
+002bf0 0000 0000 0000 0000 000c de00 3e04 8f88
+002c00 0000 0000 03f4 0000 0000 0000 0000 0000
+002c10 0000 0000 0000 0000 0000 0000 0000 0000
+*
+002ff0 0000 0000 0000 0000 000c de00 3e04 8f88
+003000 0000 0000 03f4 0000 0000 0000 0000 0000
+003010 0000 0000 0000 0000 0000 0000 0000 0000
+*
+0033f0 0000 0000 0000 0000 000c de00 3e04 8f88
+003400 0000 0000 03f4 0000 0000 0000 0000 0000
+003410 0000 0000 0000 0000 0000 0000 0000 0000
+*
+[... snip ...]
+&lt;/pre&gt;
+
+&lt;p&gt;But at the byte density provided by the output of 'od', trying to visualize the ext4 structure is like trying to visualize the structure of three deciduous forests by examining the leaves of a single tree... I wanted a picture which would let me &quot;zoom out&quot;, giving me a better idea of what I was looking at...&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;So I came up with this... each blue block is 1024 pixels wide, and 64 pixels high... each pixel represents a single byte... Nothing much to see here, except a drive made entirely of 0x00s.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/blockfile.nulls.ext4.png&quot; alt=&quot;I miss you, image =(&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;br /&gt;It starts to get interesting after creating the ext4 filesystem, and see this...&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/blockfile.nouserdata.ext4.png&quot; alt=&quot;I miss you, image&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;br /&gt;With this image we can can see the structure added by mkfs.ext4, and where on the drive the ext4 data is located.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Its worth noting this image doesn’t actually differentiate between &quot;ext4 bytes&quot; and &quot;non-ext4 bytes&quot;. That is, there could be bytes owned by ext4, but if they are 0x00s they are color coded the same as any other 0x00... But even with this limitation, the image is interesting.
+&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;But I still wanted an image which differentiated between ext4 data and &quot;user&quot; data. My solution was to create a file 1024 bytes in size from /dev/urandom, and copy that file to the mounted loop device. Then, in my visualization code, when reading the blockfile, I test if &quot;the next 1024 bytes to be read&quot; match &quot;the 1024 bytes of the reference file&quot;, and if they match, color code those 1024 pixels accordingly.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;And with user data copied to the drive, we get this:&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/blockfile.ext4.120.png&quot; alt=&quot;I miss you, image&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;br /&gt;Which I find very satisfying... But still, I wanted an animation. So I built an animated GIF.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Between each frame, the &quot;user data&quot; file is copied to the drive three times... so there are three copies written each frame... This makes for a more expressive animation and a smaller GIF than if each frame was a single 'cp' of the file.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;I hope you enjoy this as much as I do.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;/assets/images/ext4.gif&quot;&gt;click for animated ext4&lt;/a&gt;&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;And by way of comparison, here is a similar animation, but with ext2&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;/assets/images/ext2.gif&quot;&gt;click for animated ext2&lt;/a&gt;&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+&lt;hr /&gt;
+
+&lt;p&gt;&lt;br /&gt;Here begins the ext4 rabbit hole...&lt;br /&gt;
+&lt;a href=&quot;https://en.wikipedia.org/wiki/Ext4&quot;&gt;Wikipedia&lt;/a&gt;
+&lt;a href=&quot;https://ext4.wiki.kernel.org/index.php/Main_Page&quot;&gt;ext4 wiki&lt;a&gt;&lt;/a&gt;
+&lt;a href=&quot;https://www.kernel.org/doc/html/latest/admin-guide/ext4.html&quot;&gt;Admin Guide&lt;/a&gt;
+&lt;a href=&quot;http://e2fsprogs.sourceforge.net/&quot;&gt;e2fsprogs&lt;/a&gt;
+&lt;a href=&quot;https://www.kernel.org/doc/html/latest/filesystems/ext4/index.html&quot;&gt;ext4 Data Structures and Algorithms&lt;/a&gt;&lt;/a&gt;&lt;/p&gt;</content><author><name></name></author><summary type="html">What does ext4 look like?</summary></entry><entry><title type="html">Starving Nginx of File-Handles</title><link href="buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles.html" rel="alternate" type="text/html" title="Starving Nginx of File-Handles" /><published>2019-07-07T00:00:00-07:00</published><updated>2019-07-07T00:00:00-07:00</updated><id>buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles</id><content type="html" xml:base="buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles.html">&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+&lt;center&gt;&lt;h1&gt;Starving nginx of File-Handles&lt;/h1&gt;&lt;/center&gt;
+&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;This post covers starving nginx of file-handles, demonstrating a tool I wrote for exhuasting file-handles.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;The program works by open()ing files until it can’t open any more.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Then provides the option to close() files, one at a time... thus freeing a single file-handle at a time, allowing the user to test a targeted program’s behavior against the number of available file-handles.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;First off, to run these experiments I need to run nginx as root, that is, I can’t start nginx on the command line as a regular user.&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;user@debian:~$ /usr/sbin/nginx
+nginx: [alert] could not open error log file: open() &quot;/var/log/nginx/error.log&quot; failed (13: Permission denied)
+2019/07/07 17:01:48 [warn] 1335#1335: the &quot;user&quot; directive makes sense only if the master process runs with super-user privileges, ignored in /etc/nginx/nginx.conf:1
+2019/07/07 17:01:48 [emerg] 1335#1335: open() &quot;/var/log/nginx/access.log&quot; failed (13: Permission denied)&lt;/pre&gt;
+&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;And yes, nginx is usually managed as a systemd service (on systemd systems), but like I said, in order to run these tests, I need to start it on the command line.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;But root has the privilege to use file-handles in excess of fs.file-max. So what we need, is a root shell, but where fs.file-max is applied.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;The way to do this is to get a root shell, but without the &quot;CAP_SYS_ADMIN&quot; Linux capability... among other things, the &quot;CAP_SYS_ADMIN&quot; capability allows the user to exceed fs.file-max.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;Getting a shell without this capability can be acheived with&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;# setpriv --bounding-set -sys_admin bash&lt;/pre&gt;
+
+&lt;p&gt;This allows me to achieve my goal of starving nginx of file-handles, while still having every other rootly power.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;I’m using nginx version: nginx/1.10.3&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;The [n-m] numbers indicate the range of available file-handles resulting in the given errors.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;[000-001]&lt;/p&gt;
+&lt;pre&gt;bash: start_pipeline: pgrp pipe: Too many open files in system
+bash: /usr/sbin/nginx: Too many open files in system&lt;/pre&gt;
+
+&lt;p&gt;[002-003]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libdl.so.2: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[004-004]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libpthread.so.0: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[005-005]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libcrypt.so.1: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[006-006]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libpcre.so.3: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[007-007]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libssl.so.1.1: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[008-008]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libcrypto.so.1.1: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[009-009]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libz.so.1: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[010-010]&lt;/p&gt;
+&lt;pre&gt;/usr/sbin/nginx: error while loading shared libraries: libc.so.6: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[011-011]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] open() &quot;/etc/nginx/nginx.conf&quot; failed (23: Too many open files in system)&lt;/pre&gt;
+
+&lt;p&gt;[012-012]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] getpwnam(&quot;www-data&quot;) failed (23: Too many open files in system) in /etc/nginx/nginx.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[013-014]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] getpwnam(&quot;www-data&quot;) failed in /etc/nginx/nginx.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[015-015]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_auth_pam_module.so&quot; failed (/usr/share/nginx/modules/ngx_http_auth_pam_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[016-016]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_auth_pam_module.so&quot; failed (libpam.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[017-017]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_auth_pam_module.so&quot; failed (/usr/share/nginx/modules/ngx_http_auth_pam_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[018-019]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_auth_pam_module.so&quot; failed (libpam.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[020-020]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_auth_pam_module.so&quot; failed (libaudit.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[021-021]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_auth_pam_module.so&quot; failed (libcap-ng.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[022-023]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_dav_ext_module.so&quot; failed (libexpat.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-dav-ext.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[024-024]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_geoip_module.so&quot; failed (/usr/share/nginx/modules/ngx_http_geoip_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-geoip.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[025-026]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_geoip_module.so&quot; failed (libGeoIP.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-geoip.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[027-028]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libgd.so.3: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[029-029]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libm.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[030-030]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libpng16.so.16: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[031-031]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libfontconfig.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[032-032]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libfreetype.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[033-033]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libjpeg.so.62: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[034-034]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libXpm.so.4: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[035-035]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libX11.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[036-036]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libtiff.so.5: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[037-037]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libwebp.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[038-038]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libxcb.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[039-039]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (liblzma.so.5: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[040-040]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libjbig.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[041-041]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libXau.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[042-042]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libXdmcp.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[043-043]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (libbsd.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[044-044]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_image_filter_module.so&quot; failed (librt.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[045-045]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_upstream_fair_module.so&quot; failed (/usr/share/nginx/modules/ngx_http_upstream_fair_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-upstream-fair.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[046-046]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (/usr/share/nginx/modules/ngx_http_xslt_filter_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[047-048]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libxml2.so.2: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[049-050]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libxslt.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[051-051]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libicui18n.so.57: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[052-052]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libicuuc.so.57: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[053-053]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libicudata.so.57: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[054-054]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libgcrypt.so.20: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[055-055]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libstdc++.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[056-056]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libgcc_s.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[057-057]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_http_xslt_filter_module.so&quot; failed (libgpg-error.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[058-058]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] dlopen() &quot;/usr/share/nginx/modules/ngx_stream_module.so&quot; failed (/usr/share/nginx/modules/ngx_stream_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-stream.conf:1&lt;/pre&gt;
+
+&lt;p&gt;[059-059]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] socket() 0.0.0.0:80 failed (23: Too many open files in system)&lt;/pre&gt;
+
+&lt;p&gt;[060-060]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] socket() [::]:80 failed (23: Too many open files in system)&lt;/pre&gt;
+
+&lt;p&gt;[061-061]&lt;/p&gt;
+&lt;pre&gt;nginx: [alert] mmap(MAP_ANON|MAP_SHARED, 1280) failed (23: Too many open files in system)&lt;/pre&gt;
+
+&lt;p&gt;[062-062]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] open(&quot;/dev/null&quot;) failed (23: Too many open files in system)&lt;/pre&gt;
+
+&lt;p&gt;[063-063]&lt;/p&gt;
+&lt;pre&gt;nginx: [emerg] open() &quot;/run/nginx.pid&quot; failed (23: Too many open files in system)&lt;/pre&gt;
+
+&lt;p&gt;[064-064]
+No message on terminal.
+Master process running.
+No response when trying to load homepage.&lt;/p&gt;
+
+&lt;pre&gt;root      1492  0.0  0.1 159532  1620 ?        Ss   13:47   0:00 nginx: master process /usr/sbin/nginx&lt;/pre&gt;
+
+&lt;p&gt;/var/log/nginx/error.log:&lt;/p&gt;
+
+&lt;pre&gt;2019/07/03 13:47:54 [emerg] 1493#1493: epoll_create() failed (23: Too many open files in system)
+2019/07/03 13:47:54 [alert] 1492#1492: worker process 1493 exited with fatal code 2 and cannot be respawned&lt;/pre&gt;
+
+&lt;p&gt;[065-065]
+No message on terminal.
+Master and worker process started.
+No response when trying to load homepage.&lt;/p&gt;
+
+&lt;pre&gt;root@debian:/var/log/nginx# ps aux | grep -i nginx
+root      1507  0.0  0.1 159532  1620 ?        Ss   13:53   0:00 nginx: master process /usr/sbin/nginx
+www-data  1508  0.0  0.3 159868  3156 ?        S    13:53   0:00 nginx: worker process&lt;/pre&gt;
+
+&lt;p&gt;/var/log/nginx/error.log:&lt;/p&gt;
+
+&lt;pre&gt;2019/07/03 13:53:34 [emerg] 1508#1508: eventfd() failed (23: Too many open files in system)
+2019/07/03 13:53:59 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+2019/07/03 13:54:00 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+2019/07/03 13:54:00 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+2019/07/03 13:54:01 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+[... snip ...]&lt;/pre&gt;
+
+&lt;p&gt;[066-066]
+No message on terminal.
+Master and worker process started.&lt;/p&gt;
+
+&lt;pre&gt;root@debian:/var/log/nginx# ps aux | grep -i nginx
+root      1523  0.0  0.1 159532  1636 ?        Ss   13:56   0:00 nginx: master process /usr/sbin/nginx
+www-data  1524  0.0  0.3 159868  3400 ?        S    13:56   0:00 nginx: worker process&lt;/pre&gt;
+
+&lt;p&gt;/var/log/nginx/error.log:&lt;/p&gt;
+
+&lt;pre&gt;2019/07/03 13:56:37 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:37 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:38 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:38 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:39 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+[... snip ...]&lt;/pre&gt;
+
+&lt;p&gt;[067-067]
+No message on terminal.
+Master and worker process started.
+Loading homepage results in: “500 Internal Server Error”&lt;/p&gt;
+
+&lt;pre&gt;root@debian:/var/log/nginx# ps aux | grep -i nginx
+root      1538  0.0  0.1 159532  1624 ?        Ss   13:57   0:00 nginx: master process /usr/sbin/nginx
+www-data  1539  0.0  0.3 159868  3308 ?        S    13:57   0:00 nginx: worker process&lt;/pre&gt;
+
+&lt;p&gt;/var/log/nginx/error.log:&lt;/p&gt;
+
+&lt;pre&gt;2019/07/03 13:58:34 [crit] 1539#1539: *1 open() &quot;/var/www/html/index.nginx-debian.html&quot; failed (23: Too many open files in system), client: 10.0.2.2, server: _, request: &quot;GET / HTTP/1.1&quot;, host: &quot;127.0.0.1:8080&quot;&lt;/pre&gt;
+
+&lt;p&gt;[068-999]
+No message on terminal.
+Master and worker process started.
+Landing page successfully loads: “Welcome to nginx!”&lt;/p&gt;</content><author><name></name></author><summary type="html">Starving nginx of File-Handles</summary></entry><entry><title type="html">Starving Docker of File-Handles</title><link href="buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles.html" rel="alternate" type="text/html" title="Starving Docker of File-Handles" /><published>2019-06-23T00:00:00-07:00</published><updated>2019-06-23T00:00:00-07:00</updated><id>buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles</id><content type="html" xml:base="buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles.html">&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+&lt;center&gt;&lt;h1&gt;Starving Docker of File-Handles&lt;/h1&gt;&lt;/center&gt;
+&lt;p&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;The value in /proc/sys/fs/file-max &quot;defines a system-wide limit on the number of open files for all processes&quot;. This limit can be exceded by privileged processes, those with CAP_SYS_ADMIN capability.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;file-max can be set with the ‘sysctl’ command.&lt;/p&gt;
+&lt;pre&gt;
+# sysctl -w fs.file-max=99200
+&lt;/pre&gt;
+
+&lt;p&gt;If an unprivileged process attempts to open files in excess of fs.file-max, you get ENFILE, errno.h #23 &quot;File table overflow&quot; and a message along the lines of:&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;
+Too many open files in system
+&lt;/pre&gt;
+
+&lt;p&gt;I was curious what effect limiting the number of available file-handles would have on Docker. That is, what would happen when I try to start a Docker container, but the system does not have enough available file-handles.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;/proc/sys/fs/file-nr aka fs.file-nr contains three values&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;1) the number of allocated file-handles
+2) the number of allocated but unused file-handles
+3) the maximum number of file-handles.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;While running a series of experiments, I discovered that /proc/sys/fs/file-nr didn’t update as I expected.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;With further experimentation, I discovered if I ran 'lsof' in the same shell that I had run my &quot;open n-files&quot; program, I could get fs.file-nr to update &quot;on demand&quot; as it were.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;I also discovered that fs.file-nr only increases/decreases in blocks of 32. So, if I were monitoring fs.file-nr and the number of allocated file-handles was, say 960, and I opened one file, I expected fs.file-nr to then read 961... but that’s not how it works.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;fs.file-nr showing 960 means that while there are no fewer that 960 allocated file-handles, the true value could be as many as 991.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;This makes finding the true number of allocated file-handles a bit tedious.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;The way I did this was to open an increasingly large number of files, and search for the value where &quot;one more file&quot; bumped fs.file-nr into the next block of 32.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;
+# open.n.files 119 &amp;amp; lsof
+# open.n.files 120 &amp;amp; lsof
+# open.n.files 121 &amp;amp; lsof
+# open.n.files 122 &amp;amp; lsof
+&lt;/pre&gt;
+
+&lt;p&gt;While I did this, in another terminal I ran a script which would echo fs.file-nr to stdout, along with a timestamp.&lt;/p&gt;
+
+&lt;pre&gt;13:35:14 1088   0       99200
+13:35:16 1088   0       99200
+13:35:18 1088   0       99200
+13:35:20 1088   0       99200&lt;/pre&gt;
+
+&lt;p&gt;Using this method I was able to find a value where fs.file-nr jumped from one 32-block to the next...&lt;/p&gt;
+
+&lt;p&gt;Opening 'm' files gives&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;13:36:55 1088   0       99200&lt;/pre&gt;
+
+&lt;p&gt;And opening 'm + 1' files gives&lt;/p&gt;
+
+&lt;pre&gt;13:37:03 1120       99200&lt;/pre&gt;
+
+&lt;p&gt;Using this method I found the exact number of files to open so as to leave zero available file-handles for the system.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;I then ran my program thusly&lt;br /&gt;&lt;/p&gt;
+
+&lt;pre&gt;# open.n.files $((m - n)) &amp;amp; lsof&lt;/pre&gt;
+
+&lt;p&gt;With 'n' being the number of file-handles I want available to the system.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;This method gave me fine grained control over the number of available file-handles... these are the errors I found with the given number of available file-handles.&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;[0000-0011] available file-handles&lt;/p&gt;
+
+&lt;pre&gt;user@debian:~$ docker run -t -d mydeb
+-bash: start_pipeline: pgrp pipe: Too many open files in system
+-bash: /usr/bin/docker: Too many open files in system&lt;/pre&gt;
+
+&lt;p&gt;[0012-0013] available file-handles&lt;/p&gt;
+&lt;pre&gt;user@debian:~$ docker run -t -d mydeb
+docker: error while loading shared libraries: libpthread.so.0: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[0014-0014] available file-handles&lt;/p&gt;
+&lt;pre&gt;user@debian:~$ docker run -t -d mydeb
+docker: error while loading shared libraries: libdl.so.2: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[0015-0015] available files-handles&lt;/p&gt;
+&lt;pre&gt;user@debian:~$ docker run -t -d mydeb
+docker: error while loading shared libraries: libc.so.6: cannot open shared object file: Error 23&lt;/pre&gt;
+
+&lt;p&gt;[0016-0016] available file-handles&lt;/p&gt;
+&lt;pre&gt;
+user@debian:~$ docker run -t -d mydeb
+runtime: epollcreate failed with 23
+fatal error: runtime: netpollinit failed
+
+goroutine 1 [running, locked to thread]:
+runtime.throw(0x561981971c34, 0x1b)
+        /usr/local/go/src/runtime/panic.go:616 +0x83 fp=0xc42007fbd8 sp=0xc42007fbb8 pc=0x56198069ba43
+runtime.netpollinit()
+        /usr/local/go/src/runtime/netpoll_epoll.go:36 +0xca fp=0xc42007fc00 sp=0xc42007fbd8 pc=0x56198069904a
+internal/poll.runtime_pollServerInit()
+        /usr/local/go/src/runtime/netpoll.go:87 +0x22 fp=0xc42007fc10 sp=0xc42007fc00 pc=0x561980697cc2
+sync.(*Once).Do(0x561982e8ed08, 0x5619823603c0)
+        /usr/local/go/src/sync/once.go:44 +0xc0 fp=0xc42007fc48 sp=0xc42007fc10 pc=0x5619806de8f0
+internal/poll.(*pollDesc).init(0xc42003a1a8, 0xc42003a190, 0x1, 0xc42003a190)
+        /usr/local/go/src/internal/poll/fd_poll_runtime.go:36 +0x3f fp=0xc42007fc90 sp=0xc42007fc48 pc=0x561980703ebf
+internal/poll.(*FD).Init(0xc42003a190, 0x561981948aab, 0x4, 0x80001, 0x0, 0x3)
+        /usr/local/go/src/internal/poll/fd_unix.go:62 +0x62 fp=0xc42007fcc0 sp=0xc42007fc90 pc=0x561980704be2
+os.newFile(0x3, 0x5619819722d1, 0x1c, 0x1, 0x3)
+        /usr/local/go/src/os/file_unix.go:117 +0xf5 fp=0xc42007fd10 sp=0xc42007fcc0 pc=0x56198070e1b5
+os.openFileNolog(0x5619819722d1, 0x1c, 0x0, 0x0, 0x1a0, 0xc4200ac000, 0x0)
+        /usr/local/go/src/os/file_unix.go:194 +0x1a4 fp=0xc42007fd68 sp=0xc42007fd10 pc=0x56198070e4b4
+os.OpenFile(0x5619819722d1, 0x1c, 0x0, 0xc400000000, 0x0, 0x561982e70fa0, 0xc42007fe10)
+        /usr/local/go/src/os/file.go:269 +0x61 fp=0xc42007fdb0 sp=0xc42007fd68 pc=0x56198070c101
+os.Open(0x5619819722d1, 0x1c, 0xc4200ac000, 0xc42007fe48, 0x56198067a384)
+        /usr/local/go/src/os/file.go:250 +0x48 fp=0xc42007fdf8 sp=0xc42007fdb0 pc=0x56198070bfe8
+net.open(0x5619819722d1, 0x1c, 0xc4200ac000, 0x0, 0xd)
+        /usr/local/go/src/net/parse.go:68 +0x3b fp=0xc42007fe58 sp=0xc42007fdf8 pc=0x5619807980ab
+net.maxListenerBacklog(0x0)
+        /usr/local/go/src/net/sock_linux.go:10 +0x45 fp=0xc42007fe98 sp=0xc42007fe58 pc=0x56198079aa55
+net.init()
+        /usr/local/go/src/net/net.go:358 +0xee0 fp=0xc42007fef8 sp=0xc42007fe98 pc=0x5619807ae070
+github.com/docker/cli/vendor/github.com/spf13/pflag.init()
+        &amp;lt;autogenerated&amp;gt;:1 +0x89 fp=0xc42007ff28 sp=0xc42007fef8 pc=0x5619807d6bc9
+github.com/docker/cli/vendor/github.com/spf13/cobra.init()
+        &amp;lt;autogenerated&amp;gt;:1 +0x6b fp=0xc42007ff68 sp=0xc42007ff28 pc=0x561980813c4b
+github.com/docker/cli/cli.init()
+        &amp;lt;autogenerated&amp;gt;:1 +0x5a fp=0xc42007ff78 sp=0xc42007ff68 pc=0x56198081654a
+main.init()
+        &amp;lt;autogenerated&amp;gt;:1 +0x5e fp=0xc42007ff88 sp=0xc42007ff78 pc=0x561981943a3e
+runtime.main()
+        /usr/local/go/src/runtime/proc.go:186 +0x1d2 fp=0xc42007ffe0 sp=0xc42007ff88 pc=0x56198069d292
+runtime.goexit()
+        /usr/local/go/src/runtime/asm_amd64.s:2361 +0x1 fp=0xc42007ffe8 sp=0xc42007ffe0 pc=0x5619806c8be1
+
+goroutine 5 [runnable]:
+os/signal.loop()
+        /usr/local/go/src/os/signal/signal_unix.go:20
+created by os/signal.init.0
+        /usr/local/go/src/os/signal/signal_unix.go:28 +0x43
+&lt;/pre&gt;
+
+&lt;p&gt;[0017-0022] available file-handles&lt;/p&gt;
+&lt;pre&gt;user@debian:~$ docker run -t -d mydeb
+8673a88932992868b602060d7278672183b042a3af5cad1c6e8a2be86bff6cf4
+docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?.&lt;/pre&gt;
+
+&lt;p&gt;[0023-0058] available file-handles&lt;/p&gt;
+&lt;pre&gt;user@debian:~$ docker run -t -d mydeb
+71c5da097f10e75fc4432f0c63a08fa6cc90feef0f88002106f6cf740e773d62
+docker: Error response from daemon: cannot start a stopped process: unknown.&lt;/pre&gt;
+
+&lt;p&gt;[0059-0072] available file-handles&lt;br /&gt;
+No errors displayed to user... likely errors are in /var/log/daemon.log&lt;br /&gt;&lt;br /&gt;&lt;/p&gt;
+
+&lt;p&gt;[0073-0089] available file-handles&lt;br /&gt;
+No error displayed to user.
+Docker container started, and listed with 'docker container ls'
+But can’t 'docker exec -ti &amp;lt;container id&amp;gt; bash' into the container.&lt;/p&gt;
+
+&lt;pre&gt;user@debian:~$ docker exec -ti b4a3203e4de8 bash
+OCI runtime exec failed: exec failed: container_linux.go:345: starting container process caused \&quot;too many open files in system\&quot;: unknown&lt;/pre&gt;
+
+&lt;p&gt;[0090-0094] available file-handles
+Can &quot;exec bash&quot; into container but can’t run ‘ls’.&lt;/p&gt;
+
+&lt;pre&gt;user@debian:~$ docker exec -ti be5a0cf6dd10 bash
+root@be5a0cf6dd10:/# ls
+ls: cannot open directory '.': Too many open files in system&lt;/pre&gt;
+
+&lt;p&gt;[0095-nnnn] available file-handles
+Can &quot;exec bash&quot; into container, and run ‘ls’.&lt;/p&gt;
+
+&lt;pre&gt;root@4f4c5a2a9600:/# ls
+bin   dev  home  lib64  mnt  proc  run   srv  tmp  var
+boot  etc  lib   media  opt  root  sbin  sys  usr&lt;/pre&gt;</content><author><name></name></author><summary type="html">Starving Docker of File-Handles</summary></entry></feed>

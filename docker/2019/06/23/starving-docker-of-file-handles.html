@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Starving Docker of File-Handles</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v3.8.6" />
+<meta property="og:title" content="Starving Docker of File-Handles" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Starving Docker of File-Handles" />
+<meta property="og:description" content="Starving Docker of File-Handles" />
+<link rel="canonical" href="buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles.html" />
+<meta property="og:url" content="buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles.html" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2019-06-23T00:00:00-07:00" />
+<script type="application/ld+json">
+{"description":"Starving Docker of File-Handles","@type":"BlogPosting","url":"buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles.html","headline":"Starving Docker of File-Handles","dateModified":"2019-06-23T00:00:00-07:00","datePublished":"2019-06-23T00:00:00-07:00","mainEntityOfPage":{"@type":"WebPage","@id":"buredoranna.github.io/docker/2019/06/23/starving-docker-of-file-handles.html"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/root</a></li><li><a href="/about/">/about</a></li></ul>
+  </div>
+</header>
+<main>
+      <p><br /></p>
+<center><h1>Starving Docker of File-Handles</h1></center>
+<p><br /></p>
+
+<p>The value in /proc/sys/fs/file-max "defines a system-wide limit on the number of open files for all processes". This limit can be exceded by privileged processes, those with CAP_SYS_ADMIN capability.<br /><br /></p>
+
+<p>file-max can be set with the ‘sysctl’ command.</p>
+<pre>
+# sysctl -w fs.file-max=99200
+</pre>
+
+<p>If an unprivileged process attempts to open files in excess of fs.file-max, you get ENFILE, errno.h #23 "File table overflow" and a message along the lines of:<br /></p>
+
+<pre>
+Too many open files in system
+</pre>
+
+<p>I was curious what effect limiting the number of available file-handles would have on Docker. That is, what would happen when I try to start a Docker container, but the system does not have enough available file-handles.<br /><br /></p>
+
+<p>/proc/sys/fs/file-nr aka fs.file-nr contains three values<br /><br /></p>
+
+<p>1) the number of allocated file-handles
+2) the number of allocated but unused file-handles
+3) the maximum number of file-handles.<br /><br /></p>
+
+<p>While running a series of experiments, I discovered that /proc/sys/fs/file-nr didn’t update as I expected.<br /><br /></p>
+
+<p>With further experimentation, I discovered if I ran 'lsof' in the same shell that I had run my "open n-files" program, I could get fs.file-nr to update "on demand" as it were.<br /><br /></p>
+
+<p>I also discovered that fs.file-nr only increases/decreases in blocks of 32. So, if I were monitoring fs.file-nr and the number of allocated file-handles was, say 960, and I opened one file, I expected fs.file-nr to then read 961... but that’s not how it works.<br /><br /></p>
+
+<p>fs.file-nr showing 960 means that while there are no fewer that 960 allocated file-handles, the true value could be as many as 991.<br /><br /></p>
+
+<p>This makes finding the true number of allocated file-handles a bit tedious.<br /><br /></p>
+
+<p>The way I did this was to open an increasingly large number of files, and search for the value where "one more file" bumped fs.file-nr into the next block of 32.<br /><br /></p>
+
+<pre>
+# open.n.files 119 &amp; lsof
+# open.n.files 120 &amp; lsof
+# open.n.files 121 &amp; lsof
+# open.n.files 122 &amp; lsof
+</pre>
+
+<p>While I did this, in another terminal I ran a script which would echo fs.file-nr to stdout, along with a timestamp.</p>
+
+<pre>13:35:14 1088   0       99200
+13:35:16 1088   0       99200
+13:35:18 1088   0       99200
+13:35:20 1088   0       99200</pre>
+
+<p>Using this method I was able to find a value where fs.file-nr jumped from one 32-block to the next...</p>
+
+<p>Opening 'm' files gives<br /></p>
+
+<pre>13:36:55 1088   0       99200</pre>
+
+<p>And opening 'm + 1' files gives</p>
+
+<pre>13:37:03 1120       99200</pre>
+
+<p>Using this method I found the exact number of files to open so as to leave zero available file-handles for the system.<br /><br /></p>
+
+<p>I then ran my program thusly<br /></p>
+
+<pre># open.n.files $((m - n)) &amp; lsof</pre>
+
+<p>With 'n' being the number of file-handles I want available to the system.<br /><br /></p>
+
+<p>This method gave me fine grained control over the number of available file-handles... these are the errors I found with the given number of available file-handles.<br /><br /></p>
+
+<p>[0000-0011] available file-handles</p>
+
+<pre>user@debian:~$ docker run -t -d mydeb
+-bash: start_pipeline: pgrp pipe: Too many open files in system
+-bash: /usr/bin/docker: Too many open files in system</pre>
+
+<p>[0012-0013] available file-handles</p>
+<pre>user@debian:~$ docker run -t -d mydeb
+docker: error while loading shared libraries: libpthread.so.0: cannot open shared object file: Error 23</pre>
+
+<p>[0014-0014] available file-handles</p>
+<pre>user@debian:~$ docker run -t -d mydeb
+docker: error while loading shared libraries: libdl.so.2: cannot open shared object file: Error 23</pre>
+
+<p>[0015-0015] available files-handles</p>
+<pre>user@debian:~$ docker run -t -d mydeb
+docker: error while loading shared libraries: libc.so.6: cannot open shared object file: Error 23</pre>
+
+<p>[0016-0016] available file-handles</p>
+<pre>
+user@debian:~$ docker run -t -d mydeb
+runtime: epollcreate failed with 23
+fatal error: runtime: netpollinit failed
+
+goroutine 1 [running, locked to thread]:
+runtime.throw(0x561981971c34, 0x1b)
+        /usr/local/go/src/runtime/panic.go:616 +0x83 fp=0xc42007fbd8 sp=0xc42007fbb8 pc=0x56198069ba43
+runtime.netpollinit()
+        /usr/local/go/src/runtime/netpoll_epoll.go:36 +0xca fp=0xc42007fc00 sp=0xc42007fbd8 pc=0x56198069904a
+internal/poll.runtime_pollServerInit()
+        /usr/local/go/src/runtime/netpoll.go:87 +0x22 fp=0xc42007fc10 sp=0xc42007fc00 pc=0x561980697cc2
+sync.(*Once).Do(0x561982e8ed08, 0x5619823603c0)
+        /usr/local/go/src/sync/once.go:44 +0xc0 fp=0xc42007fc48 sp=0xc42007fc10 pc=0x5619806de8f0
+internal/poll.(*pollDesc).init(0xc42003a1a8, 0xc42003a190, 0x1, 0xc42003a190)
+        /usr/local/go/src/internal/poll/fd_poll_runtime.go:36 +0x3f fp=0xc42007fc90 sp=0xc42007fc48 pc=0x561980703ebf
+internal/poll.(*FD).Init(0xc42003a190, 0x561981948aab, 0x4, 0x80001, 0x0, 0x3)
+        /usr/local/go/src/internal/poll/fd_unix.go:62 +0x62 fp=0xc42007fcc0 sp=0xc42007fc90 pc=0x561980704be2
+os.newFile(0x3, 0x5619819722d1, 0x1c, 0x1, 0x3)
+        /usr/local/go/src/os/file_unix.go:117 +0xf5 fp=0xc42007fd10 sp=0xc42007fcc0 pc=0x56198070e1b5
+os.openFileNolog(0x5619819722d1, 0x1c, 0x0, 0x0, 0x1a0, 0xc4200ac000, 0x0)
+        /usr/local/go/src/os/file_unix.go:194 +0x1a4 fp=0xc42007fd68 sp=0xc42007fd10 pc=0x56198070e4b4
+os.OpenFile(0x5619819722d1, 0x1c, 0x0, 0xc400000000, 0x0, 0x561982e70fa0, 0xc42007fe10)
+        /usr/local/go/src/os/file.go:269 +0x61 fp=0xc42007fdb0 sp=0xc42007fd68 pc=0x56198070c101
+os.Open(0x5619819722d1, 0x1c, 0xc4200ac000, 0xc42007fe48, 0x56198067a384)
+        /usr/local/go/src/os/file.go:250 +0x48 fp=0xc42007fdf8 sp=0xc42007fdb0 pc=0x56198070bfe8
+net.open(0x5619819722d1, 0x1c, 0xc4200ac000, 0x0, 0xd)
+        /usr/local/go/src/net/parse.go:68 +0x3b fp=0xc42007fe58 sp=0xc42007fdf8 pc=0x5619807980ab
+net.maxListenerBacklog(0x0)
+        /usr/local/go/src/net/sock_linux.go:10 +0x45 fp=0xc42007fe98 sp=0xc42007fe58 pc=0x56198079aa55
+net.init()
+        /usr/local/go/src/net/net.go:358 +0xee0 fp=0xc42007fef8 sp=0xc42007fe98 pc=0x5619807ae070
+github.com/docker/cli/vendor/github.com/spf13/pflag.init()
+        &lt;autogenerated&gt;:1 +0x89 fp=0xc42007ff28 sp=0xc42007fef8 pc=0x5619807d6bc9
+github.com/docker/cli/vendor/github.com/spf13/cobra.init()
+        &lt;autogenerated&gt;:1 +0x6b fp=0xc42007ff68 sp=0xc42007ff28 pc=0x561980813c4b
+github.com/docker/cli/cli.init()
+        &lt;autogenerated&gt;:1 +0x5a fp=0xc42007ff78 sp=0xc42007ff68 pc=0x56198081654a
+main.init()
+        &lt;autogenerated&gt;:1 +0x5e fp=0xc42007ff88 sp=0xc42007ff78 pc=0x561981943a3e
+runtime.main()
+        /usr/local/go/src/runtime/proc.go:186 +0x1d2 fp=0xc42007ffe0 sp=0xc42007ff88 pc=0x56198069d292
+runtime.goexit()
+        /usr/local/go/src/runtime/asm_amd64.s:2361 +0x1 fp=0xc42007ffe8 sp=0xc42007ffe0 pc=0x5619806c8be1
+
+goroutine 5 [runnable]:
+os/signal.loop()
+        /usr/local/go/src/os/signal/signal_unix.go:20
+created by os/signal.init.0
+        /usr/local/go/src/os/signal/signal_unix.go:28 +0x43
+</pre>
+
+<p>[0017-0022] available file-handles</p>
+<pre>user@debian:~$ docker run -t -d mydeb
+8673a88932992868b602060d7278672183b042a3af5cad1c6e8a2be86bff6cf4
+docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?.</pre>
+
+<p>[0023-0058] available file-handles</p>
+<pre>user@debian:~$ docker run -t -d mydeb
+71c5da097f10e75fc4432f0c63a08fa6cc90feef0f88002106f6cf740e773d62
+docker: Error response from daemon: cannot start a stopped process: unknown.</pre>
+
+<p>[0059-0072] available file-handles<br />
+No errors displayed to user... likely errors are in /var/log/daemon.log<br /><br /></p>
+
+<p>[0073-0089] available file-handles<br />
+No error displayed to user.
+Docker container started, and listed with 'docker container ls'
+But can’t 'docker exec -ti &lt;container id&gt; bash' into the container.</p>
+
+<pre>user@debian:~$ docker exec -ti b4a3203e4de8 bash
+OCI runtime exec failed: exec failed: container_linux.go:345: starting container process caused \"too many open files in system\": unknown</pre>
+
+<p>[0090-0094] available file-handles
+Can "exec bash" into container but can’t run ‘ls’.</p>
+
+<pre>user@debian:~$ docker exec -ti be5a0cf6dd10 bash
+root@be5a0cf6dd10:/# ls
+ls: cannot open directory '.': Too many open files in system</pre>
+
+<p>[0095-nnnn] available file-handles
+Can "exec bash" into container, and run ‘ls’.</p>
+
+<pre>root@4f4c5a2a9600:/# ls
+bin   dev  home  lib64  mnt  proc  run   srv  tmp  var
+boot  etc  lib   media  opt  root  sbin  sys  usr</pre>
+
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>

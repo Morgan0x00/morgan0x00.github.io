@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Starving Nginx of File-Handles</title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<meta name="generator" content="Jekyll v3.8.6" />
+<meta property="og:title" content="Starving Nginx of File-Handles" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Starving nginx of File-Handles" />
+<meta property="og:description" content="Starving nginx of File-Handles" />
+<link rel="canonical" href="buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles.html" />
+<meta property="og:url" content="buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles.html" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2019-07-07T00:00:00-07:00" />
+<script type="application/ld+json">
+{"description":"Starving nginx of File-Handles","@type":"BlogPosting","url":"buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles.html","headline":"Starving Nginx of File-Handles","dateModified":"2019-07-07T00:00:00-07:00","datePublished":"2019-07-07T00:00:00-07:00","mainEntityOfPage":{"@type":"WebPage","@id":"buredoranna.github.io/nginx/2019/07/07/starving-nginx-of-file-handles.html"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" type="text/css" href="/assets/main-dark.css"></head>
+<body>
+    <div class="container"><header>
+  <div class="menu">
+    <ul><li><a href="/">/root</a></li><li><a href="/about/">/about</a></li></ul>
+  </div>
+</header>
+<main>
+      <p><br /></p>
+<center><h1>Starving nginx of File-Handles</h1></center>
+<p><br /></p>
+
+<p>This post covers starving nginx of file-handles, demonstrating a tool I wrote for exhuasting file-handles.<br /><br /></p>
+
+<p>The program works by open()ing files until it can’t open any more.<br /><br /></p>
+
+<p>Then provides the option to close() files, one at a time... thus freeing a single file-handle at a time, allowing the user to test a targeted program’s behavior against the number of available file-handles.<br /><br /></p>
+
+<p>First off, to run these experiments I need to run nginx as root, that is, I can’t start nginx on the command line as a regular user.<br /></p>
+
+<pre>user@debian:~$ /usr/sbin/nginx
+nginx: [alert] could not open error log file: open() "/var/log/nginx/error.log" failed (13: Permission denied)
+2019/07/07 17:01:48 [warn] 1335#1335: the "user" directive makes sense only if the master process runs with super-user privileges, ignored in /etc/nginx/nginx.conf:1
+2019/07/07 17:01:48 [emerg] 1335#1335: open() "/var/log/nginx/access.log" failed (13: Permission denied)</pre>
+<p><br /></p>
+
+<p>And yes, nginx is usually managed as a systemd service (on systemd systems), but like I said, in order to run these tests, I need to start it on the command line.<br /><br /></p>
+
+<p>But root has the privilege to use file-handles in excess of fs.file-max. So what we need, is a root shell, but where fs.file-max is applied.<br /><br /></p>
+
+<p>The way to do this is to get a root shell, but without the "CAP_SYS_ADMIN" Linux capability... among other things, the "CAP_SYS_ADMIN" capability allows the user to exceed fs.file-max.<br /><br /></p>
+
+<p>Getting a shell without this capability can be acheived with<br /></p>
+
+<pre># setpriv --bounding-set -sys_admin bash</pre>
+
+<p>This allows me to achieve my goal of starving nginx of file-handles, while still having every other rootly power.<br /><br /></p>
+
+<p>I’m using nginx version: nginx/1.10.3<br /><br /></p>
+
+<p>The [n-m] numbers indicate the range of available file-handles resulting in the given errors.<br /><br /></p>
+
+<p>[000-001]</p>
+<pre>bash: start_pipeline: pgrp pipe: Too many open files in system
+bash: /usr/sbin/nginx: Too many open files in system</pre>
+
+<p>[002-003]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libdl.so.2: cannot open shared object file: Error 23</pre>
+
+<p>[004-004]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libpthread.so.0: cannot open shared object file: Error 23</pre>
+
+<p>[005-005]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libcrypt.so.1: cannot open shared object file: Error 23</pre>
+
+<p>[006-006]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libpcre.so.3: cannot open shared object file: Error 23</pre>
+
+<p>[007-007]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libssl.so.1.1: cannot open shared object file: Error 23</pre>
+
+<p>[008-008]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libcrypto.so.1.1: cannot open shared object file: Error 23</pre>
+
+<p>[009-009]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libz.so.1: cannot open shared object file: Error 23</pre>
+
+<p>[010-010]</p>
+<pre>/usr/sbin/nginx: error while loading shared libraries: libc.so.6: cannot open shared object file: Error 23</pre>
+
+<p>[011-011]</p>
+<pre>nginx: [emerg] open() "/etc/nginx/nginx.conf" failed (23: Too many open files in system)</pre>
+
+<p>[012-012]</p>
+<pre>nginx: [emerg] getpwnam("www-data") failed (23: Too many open files in system) in /etc/nginx/nginx.conf:1</pre>
+
+<p>[013-014]</p>
+<pre>nginx: [emerg] getpwnam("www-data") failed in /etc/nginx/nginx.conf:1</pre>
+
+<p>[015-015]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_auth_pam_module.so" failed (/usr/share/nginx/modules/ngx_http_auth_pam_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1</pre>
+
+<p>[016-016]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_auth_pam_module.so" failed (libpam.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1</pre>
+
+<p>[017-017]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_auth_pam_module.so" failed (/usr/share/nginx/modules/ngx_http_auth_pam_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1</pre>
+
+<p>[018-019]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_auth_pam_module.so" failed (libpam.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1</pre>
+
+<p>[020-020]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_auth_pam_module.so" failed (libaudit.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1</pre>
+
+<p>[021-021]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_auth_pam_module.so" failed (libcap-ng.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-auth-pam.conf:1</pre>
+
+<p>[022-023]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_dav_ext_module.so" failed (libexpat.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-dav-ext.conf:1</pre>
+
+<p>[024-024]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_geoip_module.so" failed (/usr/share/nginx/modules/ngx_http_geoip_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-geoip.conf:1</pre>
+
+<p>[025-026]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_geoip_module.so" failed (libGeoIP.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-geoip.conf:1</pre>
+
+<p>[027-028]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libgd.so.3: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[029-029]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libm.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[030-030]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libpng16.so.16: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[031-031]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libfontconfig.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[032-032]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libfreetype.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[033-033]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libjpeg.so.62: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[034-034]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libXpm.so.4: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[035-035]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libX11.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[036-036]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libtiff.so.5: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[037-037]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libwebp.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[038-038]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libxcb.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[039-039]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (liblzma.so.5: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[040-040]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libjbig.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[041-041]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libXau.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[042-042]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libXdmcp.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[043-043]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (libbsd.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[044-044]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_image_filter_module.so" failed (librt.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-image-filter.conf:1</pre>
+
+<p>[045-045]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_upstream_fair_module.so" failed (/usr/share/nginx/modules/ngx_http_upstream_fair_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-upstream-fair.conf:1</pre>
+
+<p>[046-046]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (/usr/share/nginx/modules/ngx_http_xslt_filter_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[047-048]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libxml2.so.2: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[049-050]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libxslt.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[051-051]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libicui18n.so.57: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[052-052]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libicuuc.so.57: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[053-053]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libicudata.so.57: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[054-054]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libgcrypt.so.20: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[055-055]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libstdc++.so.6: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[056-056]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libgcc_s.so.1: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[057-057]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_http_xslt_filter_module.so" failed (libgpg-error.so.0: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf:1</pre>
+
+<p>[058-058]</p>
+<pre>nginx: [emerg] dlopen() "/usr/share/nginx/modules/ngx_stream_module.so" failed (/usr/share/nginx/modules/ngx_stream_module.so: cannot open shared object file: Too many open files in system) in /etc/nginx/modules-enabled/50-mod-stream.conf:1</pre>
+
+<p>[059-059]</p>
+<pre>nginx: [emerg] socket() 0.0.0.0:80 failed (23: Too many open files in system)</pre>
+
+<p>[060-060]</p>
+<pre>nginx: [emerg] socket() [::]:80 failed (23: Too many open files in system)</pre>
+
+<p>[061-061]</p>
+<pre>nginx: [alert] mmap(MAP_ANON|MAP_SHARED, 1280) failed (23: Too many open files in system)</pre>
+
+<p>[062-062]</p>
+<pre>nginx: [emerg] open("/dev/null") failed (23: Too many open files in system)</pre>
+
+<p>[063-063]</p>
+<pre>nginx: [emerg] open() "/run/nginx.pid" failed (23: Too many open files in system)</pre>
+
+<p>[064-064]
+No message on terminal.
+Master process running.
+No response when trying to load homepage.</p>
+
+<pre>root      1492  0.0  0.1 159532  1620 ?        Ss   13:47   0:00 nginx: master process /usr/sbin/nginx</pre>
+
+<p>/var/log/nginx/error.log:</p>
+
+<pre>2019/07/03 13:47:54 [emerg] 1493#1493: epoll_create() failed (23: Too many open files in system)
+2019/07/03 13:47:54 [alert] 1492#1492: worker process 1493 exited with fatal code 2 and cannot be respawned</pre>
+
+<p>[065-065]
+No message on terminal.
+Master and worker process started.
+No response when trying to load homepage.</p>
+
+<pre>root@debian:/var/log/nginx# ps aux | grep -i nginx
+root      1507  0.0  0.1 159532  1620 ?        Ss   13:53   0:00 nginx: master process /usr/sbin/nginx
+www-data  1508  0.0  0.3 159868  3156 ?        S    13:53   0:00 nginx: worker process</pre>
+
+<p>/var/log/nginx/error.log:</p>
+
+<pre>2019/07/03 13:53:34 [emerg] 1508#1508: eventfd() failed (23: Too many open files in system)
+2019/07/03 13:53:59 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+2019/07/03 13:54:00 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+2019/07/03 13:54:00 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+2019/07/03 13:54:01 [crit] 1508#1508: accept4() failed (23: Too many open files in system)
+[... snip ...]</pre>
+
+<p>[066-066]
+No message on terminal.
+Master and worker process started.</p>
+
+<pre>root@debian:/var/log/nginx# ps aux | grep -i nginx
+root      1523  0.0  0.1 159532  1636 ?        Ss   13:56   0:00 nginx: master process /usr/sbin/nginx
+www-data  1524  0.0  0.3 159868  3400 ?        S    13:56   0:00 nginx: worker process</pre>
+
+<p>/var/log/nginx/error.log:</p>
+
+<pre>2019/07/03 13:56:37 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:37 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:38 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:38 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+2019/07/03 13:56:39 [crit] 1524#1524: accept4() failed (23: Too many open files in system)
+[... snip ...]</pre>
+
+<p>[067-067]
+No message on terminal.
+Master and worker process started.
+Loading homepage results in: “500 Internal Server Error”</p>
+
+<pre>root@debian:/var/log/nginx# ps aux | grep -i nginx
+root      1538  0.0  0.1 159532  1624 ?        Ss   13:57   0:00 nginx: master process /usr/sbin/nginx
+www-data  1539  0.0  0.3 159868  3308 ?        S    13:57   0:00 nginx: worker process</pre>
+
+<p>/var/log/nginx/error.log:</p>
+
+<pre>2019/07/03 13:58:34 [crit] 1539#1539: *1 open() "/var/www/html/index.nginx-debian.html" failed (23: Too many open files in system), client: 10.0.2.2, server: _, request: "GET / HTTP/1.1", host: "127.0.0.1:8080"</pre>
+
+<p>[068-999]
+No message on terminal.
+Master and worker process started.
+Landing page successfully loads: “Welcome to nginx!”</p>
+
+
+    </main><footer>
+  
+</footer>
+</div>
+  </body>
+</html>
